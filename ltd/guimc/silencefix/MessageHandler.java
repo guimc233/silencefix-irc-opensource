@@ -1,12 +1,13 @@
 package ltd.guimc.silencefix;
 
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
+import com.google.common.base.Charsets;
 import dev.faiths.utils.ClientUtils;
+import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.handler.codec.DecoderException;
 import ltd.guimc.silencefix.netty.AESDecoder;
 import ltd.guimc.silencefix.netty.AESEncoder;
 import net.minecraft.client.Minecraft;
@@ -21,9 +22,9 @@ import java.util.function.Consumer;
 import static dev.faiths.utils.IMinecraft.mc;
 
 public class MessageHandler
-        extends SimpleChannelInboundHandler<JsonElement> {
+        extends SimpleChannelInboundHandler<ByteBuf> {
     private static final Logger logger = LogManager.getLogger((String)"IRCMessageHandler");
-    private final Map<Integer, Consumer<JsonObject>> id2Func = new HashMap<Integer, Consumer<JsonObject>>();
+    private final Map<Integer, Consumer<ByteBuf>> id2Func = new HashMap<Integer, Consumer<ByteBuf>>();
     private final SilenceFixIRC silenceFixIRC;
     private int retriedTimes = 0;
 
@@ -43,40 +44,26 @@ public class MessageHandler
         this.id2Func.put(13, this::handleVersion);
     }
 
-    protected void channelRead0(ChannelHandlerContext channelHandlerContext, JsonElement msg) {
+    protected void channelRead0(ChannelHandlerContext channelHandlerContext, ByteBuf buf) {
         try {
             int id;
-            if (!msg.isJsonObject()) {
-                return;
-            }
-            JsonObject jo = msg.getAsJsonObject();
-            JsonElement idElement = jo.get("id");
-            JsonElement dataElement = jo.get("data");
-            if (!idElement.isJsonPrimitive()) {
-                return;
-            }
-            if (!dataElement.isJsonObject()) {
-                return;
-            }
-            JsonObject data = dataElement.getAsJsonObject();
             try {
-                id = idElement.getAsInt();
+                id = buf.readInt();
             } catch (NumberFormatException e) {
                 return;
             }
             if (id == 3) {
                 channelHandlerContext.pipeline().addAfter("frame_decoder", "aes_decoder", (ChannelHandler) new AESDecoder(this.silenceFixIRC.aesKey));
                 channelHandlerContext.pipeline().replace("rsa_encoder", "aes_encoder", (ChannelHandler) new AESEncoder(this.silenceFixIRC.aesKey));
-                this.silenceFixIRC.sendPacket(Messages.createQueryVersion("LiquidBounce"));
-                this.silenceFixIRC.sendPacket(Messages.createQueryClients());
-                this.silenceFixIRC.sendPacket(Messages.createSetMinecraftProfile(getUUID()));
+                this.silenceFixIRC.sendPacket(Messages.createQueryVersion("MCP"));
+                logger.info("[SFIRC] verify succeed");
             } else {
                 Consumer consumer = this.id2Func.get(id);
                 if (consumer != null) {
-                    consumer.accept(data);
+                    consumer.accept(buf);
                 } else {
                     ClientUtils.displayChatMessage("[SFIRC] Failed to parse packet: " + id);
-                    logger.warn("[SFIRC] Failed to parse packet: " + id + " -> " + data.toString());
+                    logger.warn("[SFIRC] Failed to parse packet: " + id + " -> " + buf.toString());
                 }
             }
         } catch (Exception e) {
@@ -88,8 +75,8 @@ public class MessageHandler
         return mc.thePlayer == null ? mc.getSession().getPlayerID() : mc.thePlayer.getUniqueID().toString();
     }
 
-    public void handleLog(JsonObject data) {
-        String message = MessageHandler.getStringOrNull(data, "message");
+    public void handleLog(ByteBuf data) {
+        String message = MessageHandler.getStringOrNull(data);
         logger.warn("Server log: {}", (Object)message);
         SilenceFixIRC.LogCallback callback = (SilenceFixIRC.LogCallback)this.silenceFixIRC.callbackMap.get("log");
         if (callback != null) {
@@ -97,24 +84,26 @@ public class MessageHandler
         }
     }
 
-    public void handleAuthResult(JsonObject data) {
-        int code = Integer.parseInt(MessageHandler.getStringOrNull(data, "code"));
-        String message = MessageHandler.getStringOrNull(data, "message");
+    public void handleAuthResult(ByteBuf data) {
+        int code = data.readInt();
+        String message = MessageHandler.getStringOrNull(data);
         SilenceFixIRC.AuthCallback authCallback = (SilenceFixIRC.AuthCallback)this.silenceFixIRC.callbackMap.get("auth_callback");
         if (authCallback != null) {
             authCallback.callback(message);
         }
+        this.silenceFixIRC.sendPacket(Messages.createQueryClients());
+        this.silenceFixIRC.sendPacket(Messages.createSetMinecraftProfile(getUUID()));
     }
 
-    public void handleChat(JsonObject data) {
+    public void handleChat(ByteBuf data) {
         Minecraft mc = Minecraft.getMinecraft();
-        String message = MessageHandler.getStringOrNull(data, "message");
+        String message = MessageHandler.getStringOrNull(data);
         if (/*IRCModule.Instance.getState() && */mc.theWorld != null) {
             ClientUtils.displayChatMessage("[SFIRC] " + message);
         }
     }
 
-    public void handleUnauthenticated(JsonObject data) {
+    public void handleUnauthenticated(ByteBuf data) {
         ClientUtils.displayChatMessage("[SFIRC] Unauthenticated");
         logger.warn("Unauthenticated");
         if (!Messages.name.isEmpty() && retriedTimes <= 10) {
@@ -123,22 +112,22 @@ public class MessageHandler
         }
     }
 
-    public void handleQueryPlayer(JsonObject data) {
-        String name = MessageHandler.getStringOrNull(data, "name");
+    public void handleQueryPlayer(ByteBuf data) {
+        String name = MessageHandler.getStringOrNull(data);
         if (name.isEmpty()) {
             return;
         }
-        String rank = MessageHandler.getStringOrNull(data, "rank");
-        String level = MessageHandler.getStringOrNull(data, "level");
-        String mcUUID = MessageHandler.getStringOrNull(data, "mcUUID");
-        int type = data.get("type").getAsInt();
+        String rank = MessageHandler.getStringOrNull(data);
+        String level = MessageHandler.getStringOrNull(data);
+        String mcUUID = MessageHandler.getStringOrNull(data);
+        int type = data.readInt();
         Minecraft.getMinecraft().addScheduledTask(() -> this.silenceFixIRC.ircUserMap.put(UUID.fromString(mcUUID), new IRCUser(IRCUserLevel.fromName(level), name, rank)));
     }
 
-    public void handleMyUserInfo(JsonObject data) {
-        String name = MessageHandler.getStringOrNull(data, "name");
-        String rank = MessageHandler.getStringOrNull(data, "rank");
-        String level = MessageHandler.getStringOrNull(data, "level");
+    public void handleMyUserInfo(ByteBuf data) {
+        String name = MessageHandler.getStringOrNull(data);
+        String rank = MessageHandler.getStringOrNull(data);
+        String level = MessageHandler.getStringOrNull(data);
         Minecraft.getMinecraft().addScheduledTask(() -> {
             IRCUser ircUser;
             silenceFixIRC.Instance.ircUser = ircUser = new IRCUser(IRCUserLevel.fromName(level), name, rank);
@@ -148,41 +137,41 @@ public class MessageHandler
         });
     }
 
-    public void handleMuted(JsonObject data) {
+    public void handleMuted(ByteBuf data) {
         if (Minecraft.getMinecraft().theWorld != null) {
-            String reason = MessageHandler.getStringOrNull(data, "reason");
-            String until = MessageHandler.getStringOrNull(data, "until");
+            String reason = MessageHandler.getStringOrNull(data);
+            String until = MessageHandler.getStringOrNull(data);
             ClientUtils.displayChatMessage("[SFIRC] 你已被禁言至 " + until + " 因为：" + reason);
         }
     }
 
-    public void handleChatFromOther(JsonObject data) {
+    public void handleChatFromOther(ByteBuf data) {
         if (Minecraft.getMinecraft().theWorld != null) {
-            String name = MessageHandler.getStringOrNull(data, "name");
-            String rank = MessageHandler.getStringOrNull(data, "rank");
-            String message = MessageHandler.getStringOrNull(data, "message");
+            String name = MessageHandler.getStringOrNull(data);
+            String rank = MessageHandler.getStringOrNull(data);
+            String message = MessageHandler.getStringOrNull(data);
             ClientUtils.displayChatMessage("[SFIRC] From " + name + "[" + rank + "]: " + message);
         }
     }
 
-    public void handleChatFromServer(JsonObject data) {
+    public void handleChatFromServer(ByteBuf data) {
         if (Minecraft.getMinecraft().theWorld != null) {
-            String message = MessageHandler.getStringOrNull(data, "message");
+            String message = MessageHandler.getStringOrNull(data);
             ClientUtils.displayChatMessage("[SFIRC] From server: " + message);
         }
     }
 
-    public void handlePermissionDenied(JsonObject data) {
+    public void handlePermissionDenied(ByteBuf data) {
         logger.warn("Permission denied");
         if (Minecraft.getMinecraft().theWorld != null) {
             ClientUtils.displayChatMessage("[SFIRC] Permission denied");
         }
     }
 
-    public void handleClients(JsonObject data) {
+    public void handleClients(ByteBuf data) {
         if (Minecraft.getMinecraft().theWorld != null) {
             String[] parts;
-            String message = MessageHandler.getStringOrNull(data, "message");
+            String message = MessageHandler.getStringOrNull(data);
             for (String s : parts = message.split("\n")) {
                 if (s.isEmpty()) continue;
                 if (s.charAt(0) == '\\') {
@@ -200,22 +189,16 @@ public class MessageHandler
         }
     }
 
-    public void handleCommandOut(JsonObject data) {
-        String message = MessageHandler.getStringOrNull(data, "message");
+    public void handleCommandOut(ByteBuf data) {
+        String message = MessageHandler.getStringOrNull(data);
         logger.info("[IRCCommand]: " + message);
         if (Minecraft.getMinecraft().theWorld != null) {
             ClientUtils.displayChatMessage("[SFIRC] [IRCCommand]: " + message);
         }
     }
 
-    public void handleVersion(JsonObject data) {
-        String version = MessageHandler.getStringOrNull(data, "version");
-        if (!"V8".equals(version)) {
-            Minecraft.getMinecraft().addScheduledTask(() -> {
-                ClientUtils.displayChatMessage("[SFIRC] 有新版本：" + version);
-                // Minecraft.getMinecraft().func_71400_g();
-            });
-        }
+    public void handleVersion(ByteBuf data) {
+        String version = MessageHandler.getStringOrNull(data);
     }
 
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
@@ -256,11 +239,19 @@ public class MessageHandler
         }
     }
 
-    private static String getStringOrNull(JsonObject data, String name) {
-        JsonElement jsonElement = data.get(name);
-        if (jsonElement == null || !jsonElement.isJsonPrimitive()) {
-            return null;
+    private static String getStringOrNull(ByteBuf data) {
+        int i = data.readInt();
+        if (i > 65535 * 4) {
+            throw new DecoderException("The received encoded string buffer length is longer than maximum allowed (" + i + " > " + 65535 * 4 + ")");
+        } else if (i < 0) {
+            throw new DecoderException("The received encoded string buffer length is less than zero! Weird string!");
+        } else {
+            String s2 = new String(data.readBytes(i).array(), Charsets.UTF_8);
+            if (s2.length() > 65535) {
+                throw new DecoderException("The received string length is longer than maximum allowed (" + i + " > " + 65535 + ")");
+            } else {
+                return s2;
+            }
         }
-        return jsonElement.getAsString();
     }
 }

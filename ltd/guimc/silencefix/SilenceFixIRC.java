@@ -5,16 +5,15 @@ import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
-import io.netty.handler.codec.string.StringDecoder;
-import io.netty.handler.codec.string.StringEncoder;
 import io.netty.util.concurrent.GenericFutureListener;
-import ltd.guimc.silencefix.netty.*;
+import ltd.guimc.silencefix.netty.FrameDecoder;
+import ltd.guimc.silencefix.netty.FrameEncoder;
+import ltd.guimc.silencefix.netty.RSAEncoder;
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.EnumChatFormatting;
 
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -36,7 +35,7 @@ public class SilenceFixIRC {
         Instance = new SilenceFixIRC();
         Instance.callbackMap.put("log", new ltd.guimc.silencefix.callback.LogCallback());
         Instance.callbackMap.put("auth_callback", new ltd.guimc.silencefix.callback.AuthCallback());
-        Instance.callbackMap.put("exception_callback", new ltd.guimc.silencefix.callback.AuthCallback());
+        Instance.callbackMap.put("exception_callback", new ltd.guimc.silencefix.callback.ExceptionCallback());
     }
 
     public void connect() throws Exception {
@@ -49,12 +48,8 @@ public class SilenceFixIRC {
             @Override
             protected void initChannel(NioSocketChannel channel) {
                 channel.pipeline().addLast("frame_decoder", new FrameDecoder());
-                channel.pipeline().addLast("string_decoder", new StringDecoder(StandardCharsets.UTF_8));
-                channel.pipeline().addLast("string_to_json", new StringToJsonDecoder());
                 channel.pipeline().addLast("frame_encoder", new FrameEncoder());
                 channel.pipeline().addLast("rsa_encoder", new RSAEncoder());
-                channel.pipeline().addLast("string_encoder", new StringEncoder(StandardCharsets.UTF_8));
-                channel.pipeline().addLast("json_to_string", new JsonToStringEncoder());
                 channel.pipeline().addLast(new MessageHandler(SilenceFixIRC.this));
                 SilenceFixIRC.this.channel = channel;
             }
@@ -101,12 +96,10 @@ public class SilenceFixIRC {
     };
 
     public static String generateHardwareId() throws Exception {
-        String input = "sb";
-        String sha256 = DigestUtil.sha256Hex(input);
-        return sha256;
+        return "sb";
     };
 
-    private /* synthetic */ void lambda$connect$1(ChannelFuture channelFuture) throws Exception {
+    private void lambda$connect$1(ChannelFuture channelFuture) {
         Minecraft.getMinecraft().addScheduledTask(() -> {
             if (channelFuture.isSuccess()) {
                 this.channel = channelFuture.channel();
@@ -119,7 +112,11 @@ public class SilenceFixIRC {
                     this.channel.close();
                     ExceptionCallback callback = (ExceptionCallback) this.callbackMap.get("exception_callback");
                     if (callback != null) {
-                        callback.callback(channelFuture.cause());
+                        if (channelFuture.cause() != null) {
+                            callback.callback(channelFuture.cause());
+                        } else {
+                            callback.callback(e);
+                        }
                     }
                 }
             } else {

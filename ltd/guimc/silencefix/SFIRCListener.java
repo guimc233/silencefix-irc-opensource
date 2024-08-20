@@ -1,13 +1,9 @@
 package ltd.guimc.silencefix;
 
-import com.example.event.Handler;
-import com.example.event.Listener;
-import com.example.event.impl.TickUpdateEvent;
-import com.example.utils.MSTimer;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
 
-import static com.example.utils.IMinecraft.mc;
+import static dev.faiths.utils.IMinecraft.mc;
 import static ltd.guimc.silencefix.SilenceFixIRC.Instance;
 
 public class SFIRCListener implements Listener {
