@@ -1,107 +1,124 @@
 package ltd.guimc.silencefix;
 
 import cn.hutool.core.codec.Base64;
-import com.google.gson.JsonObject;
+import com.google.common.base.Charsets;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import io.netty.handler.codec.EncoderException;
 
 import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 
 public class Messages {
     public static String name = "";
     public static String pass = "";
-    public static byte[] payload = Base64.decode(new byte[]{55, 90, 87, 88, 54, 90, 83, 57, 54, 111,
-            43, 65, 53, 113, 75, 109, 52, 97, 83, 116, 53, 98, 71, 101, 55, 113, 87, 101, 55, 53, 97,
-            100, 52, 53, 117, 54, 53, 90, 71, 83, 53, 89, 54, 102, 53, 54, 87, 101, 53, 90, 67, 118,
-            53, 89, 113, 111, 54, 73, 97, 115, 55, 76, 113, 121, 53, 53, 75, 81, 53, 111, 101, 103, 52,
-            112, 117, 73, 54, 76, 50, 51, 52, 55, 101, 115, 53, 54, 113, 78, 80, 43, 109, 109, 108, 103, 61, 61});
+    public static byte[] payload = new byte[]{0, 0, 0, 11, 0, 0, 0, 69, -27, -120, -104, -20, -95,
+            -115, -23, -120, -93, -24, -70, -86, -31, -116, -92, -26, -96, -108, -17, -67, -107, 63,
+            -18, -85, -116, -18, -126, -126, -25, -120, -87, -27, -114, -97, -25, -91, -98, -27, -112,
+            -81, -27, -118, -88, -27, -100, -112, -20, -114, -99, -18, -89, -94, -29, -99, -110, -17,
+            -105, -92, -30, -107, -94, -17, -83, -96, -51, -116, -17, -68, -116, 0, 0};
 
-    public static JsonObject createHandshake(SecretKey var0) {
-        JsonObject data = new JsonObject();
-        data.addProperty("key", Base64.encode(var0.getEncoded()));
-        data.addProperty("justsimpleproperty", "永劫无间，启动！");
-        return Messages.pack(0, data);
+    public static ByteBuf createHandshake(SecretKey var0) {
+        ArrayList<String> data = new ArrayList<>();
+        data.add("dsajojidasqewpoicxznkm");
+        data.add(Base64.encode(var0.getEncoded()));
+        ByteBuf packetBuffer = Unpooled.buffer();
+        packetBuffer.capacity(233);
+        packetBuffer.writeInt(0);
+        data.forEach((s) -> {
+            writeString(packetBuffer, s);
+        });
+        return packetBuffer.copy();
     };
 
-    public static JsonObject createRegister(String var0, String var1, String var2, String var3, String var4) {
-        JsonObject data = new JsonObject();
-        name = var0;
-        pass = var1;
-        data.addProperty("username", var0);
-        data.addProperty("password", var1);
-        data.addProperty("hardwareId", var2);
-        data.addProperty("qq", var3);
-        data.addProperty("code", var4);
+    public static ByteBuf createRegister(String var0, String var1, String var2, String var3, String var4) {
+        ArrayList<String> data = new ArrayList<>();
+        data.add(var3);
+        data.add(var4);
+        data.add(var0);
+        data.add(var1);
+        data.add(var2);
         return Messages.pack(1, data);
     };
 
-    public static JsonObject createLogin(String var0, String var1, String var2) {
-        JsonObject data = new JsonObject();
-        name = var0;
-        pass = var1;
-        data.addProperty("username", var0);
-        data.addProperty("password", var1);
-        data.addProperty("hardwareId", var2);
+    public static ByteBuf createLogin(String var0, String var1, String var2) {
+        ArrayList<String> data = new ArrayList<>();
+        data.add(var0);
+        data.add(var1);
+        data.add(var2);
         return Messages.pack(2, data);
     };
 
-    public static JsonObject createChat(String message) {
-        JsonObject data = new JsonObject();
-        data.addProperty("message", message);
+    public static ByteBuf createChat(String message) {
+        ArrayList<String> data = new ArrayList<>();
+        data.add(message);
         return Messages.pack(3, data);
     }
 
-    public static JsonObject createSetMinecraftProfile(String mcUUID) {
-        JsonObject data = new JsonObject();
-        data.addProperty("mcUUID", mcUUID);
+    public static ByteBuf createSetMinecraftProfile(String mcUUID) {
+        ArrayList<String> data = new ArrayList<>();
+        data.add(mcUUID);
         return Messages.pack(4, data);
     }
 
-    public static JsonObject createQueryPlayer(String mcUUID, int type) {
-        JsonObject data = new JsonObject();
-        data.addProperty("mcUUID", mcUUID);
-        data.addProperty("type", type);
-        return Messages.pack(5, data);
+    public static ByteBuf createQueryPlayer(String mcUUID, int type) {
+        ArrayList<String> data = new ArrayList<>();
+        data.add(mcUUID);
+        ByteBuf buf = Messages.pack(5, data);
+        buf.writeInt(type);
+        return buf;
     }
 
-    public static JsonObject createRequestEmailCode(String qq) {
-        JsonObject data = new JsonObject();
-        data.addProperty("qq", qq);
+    public static ByteBuf createRequestEmailCode(String qq) {
+        ArrayList<String> data = new ArrayList<>();
+        data.add(qq);
         return Messages.pack(6, data);
     }
 
-    public static JsonObject createChatToOther(String name, String message) {
-        JsonObject data = new JsonObject();
-        data.addProperty("name", name);
-        data.addProperty("message", message);
+    public static ByteBuf createChatToOther(String name, String message) {
+        ArrayList<String> data = new ArrayList<>();
+        data.add(name);
+        data.add(message);
         return Messages.pack(7, data);
     }
 
-    public static JsonObject createQueryClients() {
-        return Messages.pack(8, new JsonObject());
+    public static ByteBuf createQueryClients() {
+        return Messages.pack(8, new ArrayList<>());
     }
 
-    public static JsonObject createCommand(String command) {
-        JsonObject data = new JsonObject();
-        data.addProperty("command", command);
+    public static ByteBuf createCommand(String command) {
+        ArrayList<String> data = new ArrayList<>();
+        data.add(command);
         return Messages.pack(9, data);
     }
 
-    public static JsonObject createQueryVersion(String clientName) {
-        JsonObject data = new JsonObject();
-        data.addProperty("clientName", clientName);
+    public static ByteBuf createQueryVersion(String clientName) {
+        ArrayList<String> data = new ArrayList<>();
+        data.add(clientName);
         return Messages.pack(10, data);
     }
 
-    public static JsonObject createVerify() {
-        JsonObject data = new JsonObject();
-        data.addProperty("payload", new String(payload, StandardCharsets.UTF_8));
-        return Messages.pack(11, data);
+    public static ByteBuf createVerify() {
+        return Unpooled.copiedBuffer(payload);
     }
 
-    private static JsonObject pack(int id, JsonObject data) {
-        JsonObject jo = new JsonObject();
-        jo.addProperty("id", id);
-        jo.add("data", data);
-        return jo;
+    public static void writeString(ByteBuf buffer, String string) {
+        byte[] abyte = string.getBytes(Charsets.UTF_8);
+        if (abyte.length > 32767) {
+            throw new EncoderException("String too big (was " + string.length() + " bytes encoded, max 32767)");
+        } else {
+            buffer.writeInt(abyte.length);
+            buffer.writeBytes(abyte);
+        }
+    }
+
+    private static ByteBuf pack(int id, ArrayList<String> data) {
+        ByteBuf packetBuffer = Unpooled.buffer();
+        packetBuffer.capacity(1024);
+        packetBuffer.writeInt(id);
+        data.forEach((s) -> {
+            writeString(packetBuffer, s);
+        });
+        return packetBuffer.copy();
     }
 }
