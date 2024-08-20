@@ -3,7 +3,6 @@ package ltd.guimc.silencefix;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
 
-import static dev.faiths.utils.IMinecraft.mc;
 import static ltd.guimc.silencefix.SilenceFixIRC.Instance;
 
 public class SFIRCListener implements Listener {
